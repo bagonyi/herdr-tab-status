@@ -60,6 +60,22 @@ To work on the plugin, clone this repo and link your checkout instead:
 To change the markers, edit `MARKERS` at the top of `tab_status.py`; to
 change the delay, edit `SEEN_DELAY_SECONDS`.
 
+## Debugging
+
+To see what the plugin does, turn on its log by creating an empty file named
+`log` in its config directory:
+
+```sh
+dir="$(herdr plugin config-dir bagonyi.tab-status)"
+mkdir -p "$dir" && touch "$dir/log"
+```
+
+Each run then adds what started it, the tabs with a marker or an active agent,
+and what it renamed to `tab_status.log` in the plugin's state directory
+(`~/.local/state/herdr/plugins/bagonyi.tab-status/` by default). It records tab
+names, not what runs in them, and keeps at most about 2 MB. Delete the `log`
+file to turn it off again.
+
 ## Uninstall
 
 Remove the markers first, so no tab keeps a stale one:
