@@ -1,0 +1,51 @@
+id = "bagonyi.tab-status"
+name = "Tab Status"
+version = "0.3.0"
+min_herdr_version = "0.9.3"
+description = "Marks tabs whose agents finished (🟢), are working (⏳) or need your input (🟠)"
+platforms = ["linux", "macos"]
+
+# Every run reconciles all tabs, so each hook runs the same command.
+
+[[startup]]
+command = ["python3", "tab_status.py"]
+
+[[events]]
+on = "pane.agent_status_changed"
+command = ["python3", "tab_status.py"]
+
+[[events]]
+on = "tab.created"
+command = ["python3", "tab_status.py"]
+
+[[events]]
+on = "tab.renamed"
+command = ["python3", "tab_status.py"]
+
+[[events]]
+on = "tab.focused"
+command = ["python3", "tab_status.py"]
+
+[[events]]
+on = "pane.created"
+command = ["python3", "tab_status.py"]
+
+[[events]]
+on = "pane.focused"
+command = ["python3", "tab_status.py"]
+
+[[events]]
+on = "pane.closed"
+command = ["python3", "tab_status.py"]
+
+[[actions]]
+id = "refresh"
+title = "Refresh tab status markers"
+contexts = ["workspace"]
+command = ["python3", "tab_status.py"]
+
+[[actions]]
+id = "clear"
+title = "Remove all tab status markers"
+contexts = ["workspace"]
+command = ["python3", "tab_status.py", "--clear"]
