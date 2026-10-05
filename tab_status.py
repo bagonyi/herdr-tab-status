@@ -133,7 +133,8 @@ def is_auto_named(tab, position, name):
 def log_tabs(tabs):
     """Log the tabs that matter: marked, with an active agent, or looked at.
 
-    The tab Herdr counts as looked at gets a `*`.
+    The focused space's active tab gets a `*`: Herdr counts it as looked at,
+    at least while a window shows the session.
     """
     shown = [
         f'{tab["tab_id"]}{"*" if current else ""} {tab["agent_status"]} "{tab["label"]}"'
@@ -194,11 +195,12 @@ def reconcile(clear=False):
     still_lingering = {}
     newly_seen = False
 
-    # (tab, position in its tab bar, whether Herdr counts it as looked at)
+    # (tab, position in its tab bar, whether it is the focused space's active tab)
     tabs = []
     for workspace in herdr("workspace", "list")["workspaces"]:
-        # Herdr counts the focused space's active tab as looked at, whether
-        # or not a window shows the session.
+        # Herdr counts the focused space's active tab as looked at while a
+        # window shows the session. Stock Herdr also does so when no window
+        # shows it; Herdr doesn't tell the plugin which applies.
         current_tab = workspace["active_tab_id"] if workspace["focused"] else None
         workspace_tabs = herdr("tab", "list", "--workspace", workspace["workspace_id"])["tabs"]
         for position, tab in enumerate(workspace_tabs, start=1):
