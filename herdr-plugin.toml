@@ -1,8 +1,8 @@
 id = "bagonyi.tab-status"
 name = "Tab Status"
-version = "0.3.0"
+version = "0.4.0"
 min_herdr_version = "0.9.3"
-description = "Marks tabs whose agents finished (🟢), are working (⏳) or need your input (🟠)"
+description = "Marks tabs whose agents finished (🟢), are working (⏳) or need your input (🟠), and flags tabs to come back to (🚩)"
 platforms = ["linux", "macos"]
 
 # Every run reconciles all tabs, so each hook runs the same command.
@@ -49,3 +49,10 @@ id = "clear"
 title = "Remove all tab status markers"
 contexts = ["workspace"]
 command = ["python3", "tab_status.py", "--clear"]
+
+# Bound to a key in config.toml. Flags the tab in front of you, or unflags it.
+[[actions]]
+id = "flag"
+title = "Flag or unflag the focused tab"
+contexts = ["tab"]
+command = ["python3", "tab_status.py", "--flag"]

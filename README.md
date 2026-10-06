@@ -28,6 +28,25 @@ that removes a finished tab's marker once its 2 seconds are up. Each run checks
 every tab against Herdr's own combined agent status for that tab, so a missed
 event is corrected on the next run. To force a run: `herdr plugin action invoke bagonyi.tab-status.refresh`.
 
+## Flagging tabs
+
+To come back to a tab later, flag it: 🚩 goes in front of its name, after any
+status marker (`🟠 🚩 checkout`), and stays until you flag the tab again. The
+flag is part of the name, so it survives a restart. Flagging works on the tab
+in front of you; bind it to a key in Herdr's `config.toml`:
+
+```toml
+[[keys.command]]
+key = "cmd+shift+f"
+type = "plugin_action"
+command = "bagonyi.tab-status.flag"
+description = "flag or unflag the focused tab"
+```
+
+Ghostty binds Cmd+Shift+F to closing its search bar. To use the key for
+flagging, add `keybind = super+shift+f=unbind` to Ghostty's config; Escape
+still closes the search bar.
+
 ## Requirements
 
 - Herdr 0.9.3 or later
@@ -50,15 +69,16 @@ To work on the plugin, clone this repo and link your checkout instead:
 
 - **Unnamed tabs are left alone.** Herdr shows them by position number and
   has no way to return a renamed tab to automatic naming, so marking one would
-  freeze its number. Name a tab (`prefix+shift+t`) to get markers.
-- **The marker is part of the tab's name.** It shows up in the rename dialog and
-  anywhere the tab name appears, such as the outer terminal's window title. If
-  you rename a marked tab, the plugin keeps your new name and manages the marker
-  in front of it.
+  freeze its number. Name a tab (`prefix+shift+t`) to get markers. Flagging an
+  unnamed tab names it `🚩 3`; unflagging leaves `3` as its name.
+- **The marker and flag are part of the tab's name.** They show up in the rename
+  dialog and anywhere the tab name appears, such as the outer terminal's window
+  title. If you rename a marked tab, the plugin keeps your new name and manages
+  the marker in front of it.
 - **The marker is a coloured symbol, not a coloured tab.**
 
 To change the markers, edit `MARKERS` at the top of `tab_status.py`; to
-change the delay, edit `SEEN_DELAY_SECONDS`.
+change the flag, `FLAG`; to change the delay, `SEEN_DELAY_SECONDS`.
 
 ## Debugging
 
@@ -86,6 +106,8 @@ herdr plugin uninstall bagonyi.tab-status
 ```
 
 If you linked a checkout, use `herdr plugin unlink bagonyi.tab-status` instead.
+Flags stay, as they are part of the tab names; unflag those tabs first if you
+don't want to keep them.
 
 ## License
 

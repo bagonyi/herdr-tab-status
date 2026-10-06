@@ -7,6 +7,9 @@ front of it. The marker goes away once Herdr reports the agents seen and
 idle, or gone. A "done" marker stays for SEEN_DELAY_SECONDS after you look
 at its tab, so switching to a space still shows which tab had finished.
 
+A tab can also be flagged, to come back to later: FLAG goes in front of its
+name, after any status marker, and stays until the tab is unflagged.
+
 Herdr runs this script on agent status changes, tab and pane lifecycle
 events, and at startup. Every run reconciles all tabs from Herdr's current
 state instead of acting on the single event, so a missed or out-of-order
@@ -21,6 +24,8 @@ Usage:
   tab_status.py --after SEC  wait SEC seconds, then reconcile (used to
                              remove "done" markers once their delay is up)
   tab_status.py --clear      remove every marker (run before uninstalling)
+  tab_status.py --flag       flag the focused tab, or unflag it, then
+                             reconcile
 """
 import fcntl
 import json
@@ -39,6 +44,10 @@ MARKERS = {
 }
 MARKER_PREFIXES = tuple(f"{marker} " for marker in MARKERS.values())
 DONE_PREFIX = f"{MARKERS['done']} "
+
+# Put in front of a flagged tab's name. It counts as part of the name, so
+# status markers go in front of it and leave it alone.
+FLAG = "🚩 "
 
 # How long a "done" marker stays after its tab has been seen.
 SEEN_DELAY_SECONDS = 2
@@ -120,6 +129,10 @@ def strip_marker(label):
     return label
 
 
+def toggle_flag(name):
+    return name[len(FLAG):] if name.startswith(FLAG) else FLAG + name
+
+
 def is_auto_named(tab, position, name):
     """Unnamed tabs show their position in the tab bar.
 
@@ -188,7 +201,12 @@ def single_run():
         yield
 
 
-def reconcile(clear=False):
+def reconcile(clear=False, flag_tab_id=None):
+    """Bring every tab's marker up to date.
+
+    With `flag_tab_id`, that tab's flag is also toggled, in the same rename
+    as its marker.
+    """
     now = time.time()
     seen_tabs = load_seen_tabs()
     lingering = seen_tabs.get(SESSION, {})
@@ -206,12 +224,19 @@ def reconcile(clear=False):
         for position, tab in enumerate(workspace_tabs, start=1):
             tabs.append((tab, position, tab["tab_id"] == current_tab))
     log_tabs(tabs)
+    if flag_tab_id and all(tab["tab_id"] != flag_tab_id for tab, _, _ in tabs):
+        log(f"  flag: no tab {flag_tab_id}")
 
     for tab, position, _ in tabs:
         name = strip_marker(tab["label"])
+        if tab["tab_id"] == flag_tab_id:
+            name = toggle_flag(name)
         if is_auto_named(tab, position, name):
-            continue
-        label = desired_label(tab, name, clear)
+            # Unnamed tabs get no marker. This removes the one left on a tab
+            # that was just unflagged back to its number.
+            label = name
+        else:
+            label = desired_label(tab, name, clear)
         # A "done" marker about to come off with nothing in its place:
         # its tab has just been seen, so keep the marker a little longer.
         if not clear and label == name and tab["label"].startswith(DONE_PREFIX):
@@ -223,7 +248,7 @@ def reconcile(clear=False):
                 log(f"  {tab_id} seen: keeping its marker for {SEEN_DELAY_SECONDS}s")
             if now < remove_at:
                 still_lingering[tab_id] = remove_at
-                continue
+                label = DONE_PREFIX + name
         if label != tab["label"]:
             herdr("tab", "rename", tab["tab_id"], label)
             log(f'  rename {tab["tab_id"]}: "{tab["label"]}" -> "{label}"')
@@ -245,7 +270,9 @@ if __name__ == "__main__":
         rotate_log()
         log(describe_trigger(args))
         try:
-            reconcile(clear="--clear" in args)
+            # Herdr passes the tab in front of you: the focused space's active tab.
+            flag_tab_id = os.environ.get("HERDR_TAB_ID") if "--flag" in args else None
+            reconcile(clear="--clear" in args, flag_tab_id=flag_tab_id)
         except Exception:
             log("  failed:\n" + traceback.format_exc().rstrip())
             raise
