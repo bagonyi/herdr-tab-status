@@ -15,7 +15,7 @@ marker: blocked, then done, then working.
 ![Herdr's tab bar with the tabs server, 🟢 tests, ⏳ refactor and 🟠 migration](screenshot.png)
 
 The markers in the tab bar come from this plugin. The sidebar, with several sessions and red
-counts of waiting agents, comes from [my fork of Herdr](https://github.com/bagonyi/herdr/blob/patches/FORK.md);
+counts of waiting agents, comes from [Herdrsson, my fork of Herdr](https://github.com/bagonyi/herdrsson/blob/patches/FORK.md);
 the plugin works the same with stock Herdr.
 
 ## How it works
