@@ -25,7 +25,11 @@ Usage:
   tab_status.py              reconcile every tab's marker
   tab_status.py --after SEC  wait SEC seconds, then reconcile (used to
                              remove "done" markers once their delay is up)
-  tab_status.py --clear      remove every marker (run before uninstalling)
+  tab_status.py --clear      remove every marker, and keep this session's
+                             tabs without markers until --refresh (run
+                             before uninstalling)
+  tab_status.py --refresh    turn markers back on after --clear, then
+                             reconcile
   tab_status.py --flag       flag the focused tab, or unflag it, then
                              reconcile
 """
@@ -61,6 +65,11 @@ STATE_DIR = os.environ.get("HERDR_PLUGIN_STATE_DIR", ".")
 # are kept per session.
 SEEN_TABS_FILE = os.path.join(STATE_DIR, "seen_tabs.json")
 SESSION = os.environ.get("HERDR_SOCKET_PATH", "")
+# Session sockets whose markers were removed with --clear. Every run there
+# keeps markers off until --refresh, so neither the runs started by the
+# clear's own renames nor later agent changes put them back before the
+# plugin is uninstalled.
+CLEARED_FILE = os.path.join(STATE_DIR, "cleared_sessions.json")
 
 CONFIG_DIR = os.environ.get("HERDR_PLUGIN_CONFIG_DIR", "")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.toml") if CONFIG_DIR else ""
@@ -267,6 +276,29 @@ def save_seen_tabs(seen_tabs):
         json.dump(seen_tabs, f, indent=2, sort_keys=True)
 
 
+def markers_off(clear, refresh):
+    """Whether this session's tabs stay without markers, after this run's
+    --clear or --refresh."""
+    try:
+        with open(CLEARED_FILE) as f:
+            cleared = set(json.load(f))
+    except (OSError, ValueError, TypeError):
+        cleared = set()
+    was_off = SESSION in cleared
+    off = (was_off or clear) and not refresh
+    if off != was_off:
+        if off:
+            cleared.add(SESSION)
+        else:
+            cleared.discard(SESSION)
+        with open(CLEARED_FILE, "w") as f:
+            json.dump(sorted(cleared), f, indent=2)
+        log("  markers back on" if was_off else "  markers off until refresh")
+    elif off:
+        log("  markers off since clear; refresh turns them back on")
+    return off
+
+
 def reconcile_later(delay):
     """Run again after `delay` seconds, detached from this hook.
 
@@ -364,7 +396,8 @@ if __name__ == "__main__":
         try:
             # Herdr passes the tab in front of you: the focused space's active tab.
             flag_tab_id = os.environ.get("HERDR_TAB_ID") if "--flag" in args else None
-            reconcile(clear="--clear" in args, flag_tab_id=flag_tab_id)
+            off = markers_off(clear="--clear" in args, refresh="--refresh" in args)
+            reconcile(clear=off, flag_tab_id=flag_tab_id)
         except Exception:
             log("  failed:\n" + traceback.format_exc().rstrip())
             raise

@@ -1,6 +1,6 @@
 id = "bagonyi.tab-status"
 name = "Tab Status"
-version = "0.4.0"
+version = "0.4.1"
 min_herdr_version = "0.9.3"
 description = "Marks tabs whose agents finished (🟢), are working (⏳) or need your input (🟠), and flags tabs to come back to (🚩)"
 platforms = ["linux", "macos"]
@@ -38,15 +38,17 @@ command = ["python3", "tab_status.py"]
 on = "pane.closed"
 command = ["python3", "tab_status.py"]
 
+# Also turns markers back on after clear.
 [[actions]]
 id = "refresh"
 title = "Refresh tab status markers"
 contexts = ["workspace"]
-command = ["python3", "tab_status.py"]
+command = ["python3", "tab_status.py", "--refresh"]
 
+# Keeps them off in this session until refresh, so they stay off for uninstalling.
 [[actions]]
 id = "clear"
-title = "Remove all tab status markers"
+title = "Remove all tab status markers until refresh"
 contexts = ["workspace"]
 command = ["python3", "tab_status.py", "--clear"]
 

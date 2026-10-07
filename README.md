@@ -26,7 +26,8 @@ a tab or pane is created, renamed, focused or closed, and once at startup.
 There is no background process; the only exception is a short-lived run
 that removes a finished tab's marker once its 2 seconds are up. Each run checks
 every tab against Herdr's own combined agent status for that tab, so a missed
-event is corrected on the next run. To force a run: `herdr plugin action invoke bagonyi.tab-status.refresh`.
+event is corrected on the next run. To force a run: `herdr plugin action invoke bagonyi.tab-status.refresh`
+(this also turns markers back on after `clear`; see [Uninstall](#uninstall)).
 
 ## Flagging tabs
 
@@ -132,6 +133,12 @@ Remove the markers first, so no tab keeps a stale one:
 herdr plugin action invoke bagonyi.tab-status.clear
 herdr plugin uninstall bagonyi.tab-status
 ```
+
+`clear` works on one session, the one the command runs in: run it from a pane
+of each session that has markers. It also keeps that session's tabs without
+markers from then on, so none come back before you uninstall. To turn them back
+on, for example after installing the plugin again, run
+`herdr plugin action invoke bagonyi.tab-status.refresh`.
 
 If you linked a checkout, use `herdr plugin unlink bagonyi.tab-status` instead.
 Flags stay, as they are part of the tab names; unflag those tabs first if you
