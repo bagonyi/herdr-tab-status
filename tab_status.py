@@ -15,9 +15,11 @@ events, and at startup. Every run reconciles all tabs from Herdr's current
 state instead of acting on the single event, so a missed or out-of-order
 event is corrected by the next run.
 
-With the log turned on (an empty file named "log" in the plugin's config
-directory), each run appends what started it, the tabs that matter and what
-it changed to tab_status.log in the state directory, shared by every session.
+Settings go in config.toml in the plugin's config directory (see
+load_settings). "mark_unnamed" puts markers on unnamed tabs too (see
+is_auto_named). "log" makes each run append what started it, the tabs that
+matter and what it changed to tab_status.log in the state directory, shared
+by every session.
 
 Usage:
   tab_status.py              reconcile every tab's marker
@@ -27,6 +29,7 @@ Usage:
   tab_status.py --flag       flag the focused tab, or unflag it, then
                              reconcile
 """
+import configparser
 import fcntl
 import json
 import os
@@ -60,8 +63,94 @@ SEEN_TABS_FILE = os.path.join(STATE_DIR, "seen_tabs.json")
 SESSION = os.environ.get("HERDR_SOCKET_PATH", "")
 
 CONFIG_DIR = os.environ.get("HERDR_PLUGIN_CONFIG_DIR", "")
-# The log is off unless an empty file named "log" is in the config directory.
-LOG_ENABLED = bool(CONFIG_DIR) and os.path.exists(os.path.join(CONFIG_DIR, "log"))
+CONFIG_FILE = os.path.join(CONFIG_DIR, "config.toml") if CONFIG_DIR else ""
+# Every setting is true or false, and off unless config.toml turns it on.
+SETTINGS = ("mark_unnamed", "log")
+# The section header parse_flat_toml adds. A TOML table name can't contain
+# a space unless quoted, so no valid config.toml has a table by this name.
+FLAT_SECTION = "top level"
+
+
+def warn(message):
+    """Herdr keeps a run's stderr: `herdr plugin log list` shows it."""
+    print(f"tab-status: {message}", file=sys.stderr)
+
+
+def parse_flat_toml(text):
+    """The `name = value` lines of a TOML file, read as INI.
+
+    For Pythons before 3.11, which have no tomllib. It follows TOML where
+    these settings need it: names keep their case, `#` starts a comment
+    anywhere, indentation means nothing, and only `true` and `false` are
+    booleans. Other values stay text, and a [table] (even [DEFAULT]) reads as
+    a setting of that name, so both are reported as wrong.
+    """
+    # INI reads an indented line as more of the value above it, and `#` as a
+    # comment only after a space. Stripping both keeps every line's number.
+    lines = [line.split("#", 1)[0].strip() for line in text.splitlines()]
+    # The added header names INI's default section, so a [DEFAULT] in the
+    # file is an ordinary table instead of settings for every section.
+    parser = configparser.ConfigParser(
+        delimiters=("=",), default_section=FLAT_SECTION, interpolation=None
+    )
+    parser.optionxform = str
+    try:
+        parser.read_string("\n".join([f"[{FLAT_SECTION}]", *lines]))
+    # Their line numbers count the header line added above.
+    except configparser.ParsingError as err:
+        numbers = [str(lineno - 1) for lineno, _ in err.errors]
+        where = f"line{'s' if len(numbers) > 1 else ''} {', '.join(numbers)}"
+        raise ValueError(f"expected name = value on {where}") from None
+    except configparser.DuplicateOptionError as err:
+        raise ValueError(
+            f"{err.option!r} is set twice, the second time on line {err.lineno - 1}"
+        ) from None
+    except configparser.DuplicateSectionError as err:
+        raise ValueError(
+            f"[{err.section}] appears twice, the second time on line {err.lineno - 1}"
+        ) from None
+    booleans = {"true": True, "false": False}
+    data = {name: booleans.get(value, value) for name, value in parser.defaults().items()}
+    data.update((table, {}) for table in parser.sections())
+    return data
+
+
+def load_settings():
+    """{setting: bool} from config.toml.
+
+    A missing file leaves every setting off. So does a file that can't be
+    read, with a warning. Pythons before 3.11 read it with parse_flat_toml.
+    """
+    settings = dict.fromkeys(SETTINGS, False)
+    if not CONFIG_FILE or not os.path.exists(CONFIG_FILE):
+        return settings
+    try:
+        with open(CONFIG_FILE, "rb") as f:
+            try:
+                import tomllib
+            except ImportError:
+                data = parse_flat_toml(f.read().decode("utf-8"))
+            else:
+                data = tomllib.load(f)
+    # TOMLDecodeError and UnicodeDecodeError are ValueErrors. tomllib runs
+    # out of stack on a file nested hundreds of levels deep.
+    except (OSError, ValueError, RecursionError, configparser.Error) as err:
+        warn(f"ignoring {CONFIG_FILE}: {err}")
+        return settings
+    for name, value in data.items():
+        if name not in settings:
+            warn(f"{CONFIG_FILE}: unknown setting {name!r}")
+        elif not isinstance(value, bool):
+            warn(f"{CONFIG_FILE}: {name} must be true or false")
+        else:
+            settings[name] = value
+    return settings
+
+
+# Set from config.toml once a run holds the lock (see __main__), so a
+# delayed run reads the settings as they are after its wait.
+LOG_ENABLED = False
+MARK_UNNAMED = False
 LOG_FILE = os.path.join(STATE_DIR, "tab_status.log")
 # Past this size the log moves to tab_status.log.1, replacing the older one.
 LOG_MAX_BYTES = 1_000_000
@@ -137,8 +226,9 @@ def is_auto_named(tab, position, name):
     """Unnamed tabs show their position in the tab bar.
 
     Renaming one would freeze that number (Herdr has no way to return a tab
-    to automatic naming), so those tabs are left alone. A tab's `number` is
-    a stable id rather than its position, so both are checked.
+    to automatic naming), so those tabs are left alone unless MARK_UNNAMED
+    is on. A tab's `number` is a stable id rather than its position, so both
+    are checked.
     """
     return name in (str(position), str(tab["number"]))
 
@@ -231,7 +321,7 @@ def reconcile(clear=False, flag_tab_id=None):
         name = strip_marker(tab["label"])
         if tab["tab_id"] == flag_tab_id:
             name = toggle_flag(name)
-        if is_auto_named(tab, position, name):
+        if not MARK_UNNAMED and is_auto_named(tab, position, name):
             # Unnamed tabs get no marker. This removes the one left on a tab
             # that was just unflagged back to its number.
             label = name
@@ -267,6 +357,8 @@ if __name__ == "__main__":
     if "--after" in args:
         time.sleep(float(args[args.index("--after") + 1]))
     with single_run():
+        settings = load_settings()
+        LOG_ENABLED, MARK_UNNAMED = settings["log"], settings["mark_unnamed"]
         rotate_log()
         log(describe_trigger(args))
         try:

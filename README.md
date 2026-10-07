@@ -47,6 +47,38 @@ Ghostty binds Cmd+Shift+F to closing its search bar. To use the key for
 flagging, add `keybind = super+shift+f=unbind` to Ghostty's config; Escape
 still closes the search bar.
 
+## Settings
+
+Settings go in `config.toml` in the plugin's config directory, which
+`herdr plugin config-dir bagonyi.tab-status` prints. Both are off unless set:
+
+```toml
+# Put markers on unnamed tabs too.
+mark_unnamed = true
+
+# Record what each run sees and changes (see Debugging).
+log = true
+```
+
+- `mark_unnamed`: unnamed tabs get markers too. A tab that was `3` is named
+  `🟢 3`, and `3` once the marker comes off. From then on Herdr treats it as a
+  named tab: it keeps `3` if tabs before it close or move, so two tabs can
+  show the same number; it is drawn like a named tab; and the navigator
+  (`prefix+g`) shows `3` where it showed the agent's title. Turning the
+  setting off doesn't undo this. A tab still named after its position gets no
+  markers again, but one whose number no longer matches counts as named and
+  keeps getting them.
+- `log`: see [Debugging](#debugging).
+
+A change applies from the plugin's next run: when an agent or tab next changes,
+or straight away with `herdr plugin action invoke bagonyi.tab-status.refresh`.
+
+Python reads TOML from version 3.11. With an older `python3`, the plugin reads
+the file's `name = true` lines with Python's INI reader instead, which is
+enough for these settings. If it can't read the file, or a setting in it, the
+plugin leaves those settings off and says why in the latest run's `stderr`:
+`herdr plugin log list --plugin bagonyi.tab-status --limit 1`.
+
 ## Requirements
 
 - Herdr 0.9.3 or later
@@ -69,8 +101,9 @@ To work on the plugin, clone this repo and link your checkout instead:
 
 - **Unnamed tabs are left alone.** Herdr shows them by position number and
   has no way to return a renamed tab to automatic naming, so marking one would
-  freeze its number. Name a tab (`prefix+shift+t`) to get markers. Flagging an
-  unnamed tab names it `🚩 3`; unflagging leaves `3` as its name.
+  freeze its number. Name a tab (`prefix+shift+t`) to get markers, or turn on
+  `mark_unnamed` (see [Settings](#settings)). Flagging an unnamed tab names it
+  `🚩 3`; unflagging leaves `3` as its name.
 - **The marker and flag are part of the tab's name.** They show up in the rename
   dialog and anywhere the tab name appears, such as the outer terminal's window
   title. If you rename a marked tab, the plugin keeps your new name and manages
@@ -82,19 +115,14 @@ change the flag, `FLAG`; to change the delay, `SEEN_DELAY_SECONDS`.
 
 ## Debugging
 
-To see what the plugin does, turn on its log by creating an empty file named
-`log` in its config directory:
-
-```sh
-dir="$(herdr plugin config-dir bagonyi.tab-status)"
-mkdir -p "$dir" && touch "$dir/log"
-```
-
-Each run then adds what started it, the tabs with a marker or an active agent,
-and what it renamed to `tab_status.log` in the plugin's state directory
+To see what the plugin does, turn on its log with `log = true` in its
+`config.toml` (see [Settings](#settings)). Each run then adds what started it,
+the tabs with a marker or an active agent, and what it renamed to
+`tab_status.log` in the plugin's state directory
 (`~/.local/state/herdr/plugins/bagonyi.tab-status/` by default). It records tab
-names, not what runs in them, and keeps at most about 2 MB. Delete the `log`
-file to turn it off again.
+names, not what runs in them, and keeps at most about 2 MB. Set `log = false`
+to turn it off again. Before version 0.4.0 an empty file named `log` in the
+config directory turned the log on; that file is now ignored.
 
 ## Uninstall
 
