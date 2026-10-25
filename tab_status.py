@@ -4,8 +4,9 @@
 While a tab's agents are "done" (finished, not yet seen), "working" or
 "blocked" (waiting for input or approval), the tab's name gets a marker in
 front of it. The marker goes away once Herdr reports the agents seen and
-idle, or gone. A "done" marker stays for SEEN_DELAY_SECONDS after you look
-at its tab, so switching to a space still shows which tab had finished.
+idle, or gone. A "done" marker stays for keep_done_seconds (2 unless set)
+after you look at its tab, so switching to a space still shows which tab had
+finished.
 
 A tab can also be flagged, to come back to later: FLAG goes in front of its
 name, after any status marker, and stays until the tab is unflagged.
@@ -17,7 +18,8 @@ event is corrected by the next run.
 
 Settings go in config.toml in the plugin's config directory (see
 load_settings). "mark_unnamed" puts markers on unnamed tabs too (see
-is_auto_named). "log" makes each run append what started it, the tabs that
+is_auto_named). "keep_done_seconds" sets how long a "done" marker stays once
+its tab is seen. "log" makes each run append what started it, the tabs that
 matter and what it changed to tab_status.log in the state directory, shared
 by every session.
 
@@ -36,6 +38,7 @@ Usage:
 import configparser
 import fcntl
 import json
+import math
 import os
 import subprocess
 import sys
@@ -56,9 +59,6 @@ DONE_PREFIX = f"{MARKERS['done']} "
 # status markers go in front of it and leave it alone.
 FLAG = "🚩 "
 
-# How long a "done" marker stays after its tab has been seen.
-SEEN_DELAY_SECONDS = 2
-
 STATE_DIR = os.environ.get("HERDR_PLUGIN_STATE_DIR", ".")
 # Session socket -> tab id -> time its "done" marker comes off. Every session
 # shares this state directory and tab ids repeat between sessions, so entries
@@ -73,8 +73,10 @@ CLEARED_FILE = os.path.join(STATE_DIR, "cleared_sessions.json")
 
 CONFIG_DIR = os.environ.get("HERDR_PLUGIN_CONFIG_DIR", "")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.toml") if CONFIG_DIR else ""
-# Every setting is true or false, and off unless config.toml turns it on.
-SETTINGS = ("mark_unnamed", "log")
+# Setting -> its value unless config.toml sets it. keep_done_seconds is how
+# long a "done" marker stays after its tab has been seen; the others are true
+# or false.
+SETTINGS = {"mark_unnamed": False, "log": False, "keep_done_seconds": 2}
 # The section header parse_flat_toml adds. A TOML table name can't contain
 # a space unless quoted, so no valid config.toml has a table by this name.
 FLAT_SECTION = "top level"
@@ -90,9 +92,10 @@ def parse_flat_toml(text):
 
     For Pythons before 3.11, which have no tomllib. It follows TOML where
     these settings need it: names keep their case, `#` starts a comment
-    anywhere, indentation means nothing, and only `true` and `false` are
-    booleans. Other values stay text, and a [table] (even [DEFAULT]) reads as
-    a setting of that name, so both are reported as wrong.
+    anywhere, indentation means nothing, only `true` and `false` are
+    booleans, and an unquoted number is a number. Other values stay text, and
+    a [table] (even [DEFAULT]) reads as a setting of that name, so both are
+    reported as wrong.
     """
     # INI reads an indented line as more of the value above it, and `#` as a
     # comment only after a space. Stripping both keeps every line's number.
@@ -118,19 +121,38 @@ def parse_flat_toml(text):
         raise ValueError(
             f"[{err.section}] appears twice, the second time on line {err.lineno - 1}"
         ) from None
-    booleans = {"true": True, "false": False}
-    data = {name: booleans.get(value, value) for name, value in parser.defaults().items()}
+    data = {name: flat_value(value) for name, value in parser.defaults().items()}
     data.update((table, {}) for table in parser.sections())
     return data
 
 
-def load_settings():
-    """{setting: bool} from config.toml.
+def seconds(value):
+    """A setting's number of seconds, 0 or more, or None if it isn't one."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return value if math.isfinite(value) and value >= 0 else None
 
-    A missing file leaves every setting off. So does a file that can't be
-    read, with a warning. Pythons before 3.11 read it with parse_flat_toml.
+
+def flat_value(text):
+    """A parse_flat_toml value: a boolean, a number, or the text as it is."""
+    if text in ("true", "false"):
+        return text == "true"
+    for number in (int, float):
+        try:
+            return number(text)
+        except ValueError:
+            pass
+    return text
+
+
+def load_settings():
+    """{setting: value} from config.toml.
+
+    A missing file leaves every setting at its default. So does a file that
+    can't be read, with a warning. Pythons before 3.11 read it with
+    parse_flat_toml.
     """
-    settings = dict.fromkeys(SETTINGS, False)
+    settings = dict(SETTINGS)
     if not CONFIG_FILE or not os.path.exists(CONFIG_FILE):
         return settings
     try:
@@ -149,6 +171,11 @@ def load_settings():
     for name, value in data.items():
         if name not in settings:
             warn(f"{CONFIG_FILE}: unknown setting {name!r}")
+        elif not isinstance(SETTINGS[name], bool):
+            if seconds(value) is None:
+                warn(f"{CONFIG_FILE}: {name} must be a number of seconds, 0 or more")
+            else:
+                settings[name] = seconds(value)
         elif not isinstance(value, bool):
             warn(f"{CONFIG_FILE}: {name} must be true or false")
         else:
@@ -160,6 +187,7 @@ def load_settings():
 # delayed run reads the settings as they are after its wait.
 LOG_ENABLED = False
 MARK_UNNAMED = False
+KEEP_DONE_SECONDS = SETTINGS["keep_done_seconds"]
 LOG_FILE = os.path.join(STATE_DIR, "tab_status.log")
 # Past this size the log moves to tab_status.log.1, replacing the older one.
 LOG_MAX_BYTES = 1_000_000
@@ -361,13 +389,18 @@ def reconcile(clear=False, flag_tab_id=None):
             label = desired_label(tab, name, clear)
         # A "done" marker about to come off with nothing in its place:
         # its tab has just been seen, so keep the marker a little longer.
-        if not clear and label == name and tab["label"].startswith(DONE_PREFIX):
+        if (
+            KEEP_DONE_SECONDS
+            and not clear
+            and label == name
+            and tab["label"].startswith(DONE_PREFIX)
+        ):
             tab_id = tab["tab_id"]
             remove_at = lingering.get(tab_id)
             if remove_at is None:
-                remove_at = now + SEEN_DELAY_SECONDS
+                remove_at = now + KEEP_DONE_SECONDS
                 newly_seen = True
-                log(f"  {tab_id} seen: keeping its marker for {SEEN_DELAY_SECONDS}s")
+                log(f"  {tab_id} seen: keeping its marker for {KEEP_DONE_SECONDS}s")
             if now < remove_at:
                 still_lingering[tab_id] = remove_at
                 label = DONE_PREFIX + name
@@ -381,7 +414,7 @@ def reconcile(clear=False, flag_tab_id=None):
         seen_tabs.pop(SESSION, None)
     save_seen_tabs(seen_tabs)
     if newly_seen:
-        reconcile_later(SEEN_DELAY_SECONDS + 0.1)
+        reconcile_later(KEEP_DONE_SECONDS + 0.1)
 
 
 if __name__ == "__main__":
@@ -391,6 +424,7 @@ if __name__ == "__main__":
     with single_run():
         settings = load_settings()
         LOG_ENABLED, MARK_UNNAMED = settings["log"], settings["mark_unnamed"]
+        KEEP_DONE_SECONDS = settings["keep_done_seconds"]
         rotate_log()
         log(describe_trigger(args))
         try:
