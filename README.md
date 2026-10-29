@@ -13,11 +13,13 @@ the tab, so when you switch to a space you still see which tab had finished
 When a tab has several agents, the one that most needs you sets the
 marker: blocked, then done, then working.
 
-![Herdr's tab bar with the tabs server, 🟢 tests, ⏳ refactor and 🟠 migration](screenshot.png)
+![Herdrsson with the tabs server, 🟢 tests, ⏳ refactor and 🟠 migration in its tab bar, and the same markers in front of the tab names in the agents panel](screenshot.png)
 
-The markers in the tab bar come from this plugin. The sidebar, with several sessions and red
-counts of waiting agents, comes from [Herdrsson, my fork of Herdr](https://github.com/bagonyi/herdrsson/blob/herdrsson/FORK.md);
-the plugin works the same with stock Herdr.
+The markers in the tab bar, and in front of the tab names in the agents panel, come from this
+plugin. The space groups and red counts of waiting agents come from
+[Herdrsson, my fork of Herdr](https://github.com/bagonyi/herdrsson/blob/herdrsson/FORK.md), the agents panel's order and times from
+[Agent Recency](https://github.com/bagonyi/herdr-agent-recency) and the bars from [Claude Cache Timer](https://github.com/bagonyi/herdr-claude-cache-timer); this plugin works the same
+with stock Herdr.
 
 ## How it works
 
