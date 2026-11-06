@@ -18,7 +18,7 @@ marker: blocked, then done, then working.
 The markers in the tab bar, and in front of the tab names in the agents panel, come from this
 plugin. The space groups and red counts of waiting agents come from
 [Herdrsson, my fork of Herdr](https://github.com/bagonyi/herdrsson/blob/herdrsson/FORK.md), the agents panel's order and times from
-[Agent Recency](https://github.com/bagonyi/herdr-agent-recency) and the context sizes and bars from [Claude Cache Timer](https://github.com/bagonyi/herdr-claude-cache-timer); this plugin works the same
+[Agent Recency](https://github.com/bagonyi/herdr-agent-recency) and the context sizes and cache times from [Claude Cache Timer](https://github.com/bagonyi/herdr-claude-cache-timer); this plugin works the same
 with stock Herdr.
 
 ## How it works
